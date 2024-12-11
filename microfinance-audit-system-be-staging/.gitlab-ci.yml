@@ -1,0 +1,81 @@
+stages:
+  - build
+  - test
+  - sonarqube-check
+  - deploy
+
+build-job:
+  stage: build
+  script:
+    - echo "Compiling the code..."
+    - echo "Compile complete."
+
+unit-test-job:
+  stage: test
+  before_script:
+    - apk add python3
+    - apk add py3-pip
+    - export PATH="/usr/bin:$PATH"
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+  script:
+    - python manage.py migrate
+    - python manage.py test --noinput
+  coverage: '/^TOTAL.*\s+(\d+\%)$/'
+  allow_failure: true
+  artifacts:
+    paths:
+      - coverage/
+
+sonarqube-check-job:
+  stage: sonarqube-check
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - sonar-scanner -X -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_TOKEN -Dsonar.projectKey=$SONAR_PROJECT_KEY
+  allow_failure: true
+  only:
+    - ci-cd-configuration
+    - staging
+    - main
+
+deploy-job-staging:
+  stage: deploy
+  variables:
+    VERCEL_PROJECT_ID: $VERCEL_PROJECT_ID_STAGING
+    VERCEL_ORG_ID: $VERCEL_ORG_ID_STAGING
+  environment: production
+  image: nikolaik/python-nodejs:python3.9-nodejs16
+  script:
+    - npm install --global vercel
+    - vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+    - vercel build --prod --token=$VERCEL_TOKEN
+    - vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
+  allow_failure: true
+  only:
+    - ci-cd-configuration
+    - staging
+
+deploy-job-main:
+  stage: deploy
+  variables:
+    VERCEL_PROJECT_ID: $VERCEL_PROJECT_ID_MAIN
+    VERCEL_ORG_ID: $VERCEL_ORG_ID_MAIN
+  environment: production
+  image: nikolaik/python-nodejs:python3.9-nodejs16
+  script:
+    - npm install --global vercel
+    - vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+    - vercel build --prod --token=$VERCEL_TOKEN
+    - vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
+  allow_failure: true
+  only:
+    - main

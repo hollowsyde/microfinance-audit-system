@@ -1,0 +1,1 @@
+export const BE_API_URL = (pathname: string) => 'http://localhost:8000/' + pathname
